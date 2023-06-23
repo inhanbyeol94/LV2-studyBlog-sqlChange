@@ -7,14 +7,13 @@ const crypto = require('crypto');
 const express = require('express');
 const app = express.Router();
 
-const { db } = require('../database/library');
-const moment = require('moment');
+const { Members } = require('../models');
+const { Op } = require('sequelize');
 
 //all read
 app.post('/register', async (req, res) => {
   try {
     const { id, password, nickname, confirmPassword } = req.body;
-    const nowDate = moment().format('YYYY-MM-DD HH:mm:ss');
 
     if (!id) return res.status(412).json({ message: 'id값은 필수입니다.' });
     if (!password) return res.status(412).json({ message: 'password값은 필수입니다.' });
@@ -25,13 +24,13 @@ app.post('/register', async (req, res) => {
     if (!/^[a-z]+[a-z0-9]{5,19}$/g.test(id)) return res.status(412).json({ message: 'id값은 영문자로 시작하는 영문자 또는 숫자 6~20자를 입력해 주세요.' });
     if (!/^(?=.*[a-zA-z])(?=.*[0-9])(?=.*[$`~!@$!%*#^?&\\(\\)\-_=+]).{8,16}$/.test(password)) return res.status(412).json({ message: 'password값은 8~16자 영문, 숫자, 특수문자를 최소 한가지씩 조합해서 입력해 주세요.' });
 
-    const [overlapToCheck] = await db(`SELECT * FROM members WHERE id = "${id}" OR nickname = "${nickname}"`);
+    const overlapToCheck = await Members.findOne({ where: { [Op.or]: [{ userId: id }, { nickname: nickname }] } });
 
     if (overlapToCheck) return res.status(412).json({ message: '입력한 id혹은 nickname이 중복된 값입니다.' });
 
     const passwordToCrypto = crypto.pbkdf2Sync(password, SECRET_KEY.toString('hex'), 11524, 64, 'sha512').toString('hex');
 
-    await db(`INSERT INTO members (id, nickname, password, CreateAt) VALUES ('${id}','${nickname}','${passwordToCrypto}','${nowDate}')`);
+    await Members.Create({ userId: id, nickname, password: passwordToCrypto });
 
     res.status(201).json({ message: '정상 등록되었습니다.' });
   } catch (err) {
@@ -49,11 +48,11 @@ app.post('/login', async (req, res) => {
 
     const passwordToCrypto = crypto.pbkdf2Sync(password, SECRET_KEY.toString('hex'), 11524, 64, 'sha512').toString('hex');
 
-    const [validationToUser] = await db(`SELECT * FROM members WHERE id = '${id}' AND password = '${passwordToCrypto}'`);
+    const validationToUser = await Members.findOne({ where: { userId: id, password: passwordToCrypto } });
 
     if (!validationToUser) return res.status(412).json({ message: '로그인에 실패하였습니다.' });
 
-    const payloadData = { id: validationToUser.id, nickname: validationToUser.nickname };
+    const payloadData = { userId: validationToUser.userId, nickname: validationToUser.nickname };
     const token = await jwt.sign(payloadData, SESSION_SECRET_KEY);
 
     res.cookie('auth', `Bearer ${token}`);

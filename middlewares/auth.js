@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const { SESSION_SECRET_KEY } = process.env;
 const jwt = require('jsonwebtoken');
-const { db } = require('../database/library');
+const { Members } = require('../models');
 
 module.exports = async (req, res, next) => {
   const { auth } = req.cookies;
@@ -11,10 +11,10 @@ module.exports = async (req, res, next) => {
   if (authType !== 'Bearer' || !authToken) return res.status(403).json({ message: '로그인 후에 이용할 수 있는 기능입니다.' });
 
   try {
-    const { id } = jwt.verify(authToken, SESSION_SECRET_KEY);
+    const { userId } = jwt.verify(authToken, SESSION_SECRET_KEY);
 
-    const [user] = await db(`SELECT id, nickname FROM members WHERE id = '${id}'`);
-    res.locals.user = user;
+    const user = await Members.findOne({ attributes: ['userId', 'nickname'], where: { userId: userId } });
+    res.locals.user = user.dataValues;
 
     next();
   } catch (err) {
